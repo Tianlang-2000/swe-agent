@@ -4,13 +4,12 @@ import type { ChatMessage, OpenAITool } from '../types.js';
 
 export interface ChatRequest {
   system: string;
-  /** Full chat history. The client is stateless; the agent owns memory. */
+  /** 完整的聊天历史。客户端是无状态的；记忆由 agent 自己维护。 */
   messages: ChatMessage[];
-  tools: OpenAITool[];
-  /** Optional token cap. Different providers accept different field names. */
+  tools?: OpenAITool[];
+  /** 可选的 token 上限。不同 provider 接受的字段名可能不同。 */
   maxTokens?: number;
 }
-
 export interface ChatResponse {
   /** Plain assistant text (may be empty if only tool calls). */
   content: string;

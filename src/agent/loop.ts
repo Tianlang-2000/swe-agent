@@ -10,9 +10,9 @@ export interface AgentOptions {
   config: AgentConfig;
   client: LLMClient;
   registry: ToolRegistry;
-  /** Called for every assistant turn; useful for live UI / logging. */
+  // 每次assistant 生成回复时都会调用；适用于实时ui/日志记录
   onAssistantTurn?: (resp: ChatResponse) => void;
-  /** Called for every tool invocation, with timing and result. */
+  // 每次工具调用都会触发，并附带耗时和执行结果
   onToolResult?: (call: ToolCall, output: string, ok: boolean, durationMs: number) => void;
 }
 

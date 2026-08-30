@@ -10,6 +10,7 @@
   "scripts": {
     "demo": "tsx src/demo.ts",
     "task": "tsx src/run.ts",
+    "web": "tsx src/server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -24,7 +25,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
-    "@types/node": "^22.7.0",
+    "@types/node": "^22.20.1",
     "tsx": "^4.19.1",
     "typescript": "^5.6.0"
   }

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>swe-agent · web</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --bg-2: #181b22;
+      --fg: #e6e8eb;
+      --fg-dim: #8b93a1;
+      --border: #262a33;
+      --accent: #4a9eff;
+      --ok: #3ecf8e;
+      --warn: #f5a524;
+      --err: #ff5470;
+      --err-bg: #2a1014;
+      --code-bg: #0a0c10;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Microsoft YaHei", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-2);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    header .status {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--fg-dim);
+    }
+    header .status .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--fg-dim);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    header .status.busy .dot { background: var(--warn); animation: pulse 1s infinite; }
+    header .status.ok .dot { background: var(--ok); }
+    header .status.err .dot { background: var(--err); }
+    @keyframes pulse { 50% { opacity: 0.4; } }
+
+    .input-bar {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-2);
+      display: grid;
+      grid-template-columns: 1fr 2fr auto;
+      gap: 8px;
+    }
+    .input-bar input, .input-bar button {
+      font: inherit;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .input-bar input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .input-bar input:disabled { opacity: 0.5; }
+    .input-bar button {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      cursor: pointer;
+      font-weight: 500;
+      min-width: 90px;
+    }
+    .input-bar button:disabled { background: #555; border-color: #555; cursor: not-allowed; }
+    .input-bar button:hover:not(:disabled) { filter: brightness(1.1); }
+
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 20px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    .event {
+      border-left: 3px solid var(--border);
+      background: var(--bg-2);
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      border-radius: 0 4px 4px 0;
+      word-wrap: break-word;
+    }
+    .event .head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--fg-dim);
+      margin-bottom: 4px;
+    }
+    .event .head .tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      background: var(--border);
+      color: var(--fg);
+    }
+    .event .head .step { color: var(--fg-dim); }
+    .event pre {
+      margin: 4px 0 0;
+      padding: 8px 10px;
+      background: var(--code-bg);
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 320px;
+      overflow-y: auto;
+      font-size: 12.5px;
+    }
+    .event .body { white-space: pre-wrap; }
+
+    .event.start { border-left-color: var(--accent); }
+    .event.start .head .tag { background: var(--accent); }
+
+    .event.assistant { border-left-color: #7d8cff; }
+    .event.assistant .head .tag { background: #7d8cff; }
+
+    .event.tool_call { border-left-color: var(--warn); }
+    .event.tool_call .head .tag { background: var(--warn); color: #000; }
+
+    .event.tool_result { border-left-color: var(--ok); }
+    .event.tool_result .head .tag { background: var(--ok); color: #000; }
+    .event.tool_result.failed {
+      border-left-color: var(--err);
+      background: var(--err-bg);
+    }
+    .event.tool_result.failed .head .tag { background: var(--err); color: #000; }
+
+    .event.error { border-left-color: var(--err); background: var(--err-bg); }
+    .event.error .head .tag { background: var(--err); color: #000; }
+
+    .event.done { border-left-color: var(--ok); }
+    .event.done .head .tag { background: var(--ok); color: #000; }
+    .event.done.failed { border-left-color: var(--err); background: var(--err-bg); }
+    .event.done.failed .head .tag { background: var(--err); color: #000; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>swe-agent</h1>
+    <span class="status" id="status"><span class="dot"></span><span id="status-text">idle</span></span>
+  </header>
+
+  <div class="input-bar">
+    <input id="workdir" placeholder="工作目录（可选，留空用 .env）" spellcheck="false" />
+    <input id="task" placeholder="任务描述，例如：修一下 src/foo.ts 的 off-by-one" spellcheck="false" />
+    <button id="run-btn">Run</button>
+  </div>
+
+  <div id="log"></div>
+
+  <script>
+    const $log = document.getElementById('log');
+    const $task = document.getElementById('task');
+    const $workdir = document.getElementById('workdir');
+    const $btn = document.getElementById('run-btn');
+    const $status = document.getElementById('status');
+    const $statusText = document.getElementById('status-text');
+
+    let busy = false;
+
+    function setStatus(kind, text) {
+      $status.className = 'status ' + (kind || '');
+      $statusText.textContent = text;
+    }
+
+    function appendEvent(ev) {
+      const div = document.createElement('div');
+      div.className = 'event ' + ev.type;
+
+      const head = document.createElement('div');
+      head.className = 'head';
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = ev.type;
+      head.appendChild(tag);
+      if (typeof ev.step === 'number' && ev.step > 0) {
+        const s = document.createElement('span');
+        s.className = 'step';
+        s.textContent = 'step ' + ev.step;
+        head.appendChild(s);
+      }
+      div.appendChild(head);
+
+      const body = document.createElement('div');
+      body.className = 'body';
+
+      if (ev.type === 'start') {
+        body.textContent = `任务: ${ev.task}\nworkdir: ${ev.workdir}\nprovider: ${ev.provider} · model: ${ev.model}`;
+      } else if (ev.type === 'assistant') {
+        const txt = (ev.content || '').trim();
+        if (txt) {
+          body.textContent = txt;
+        } else if (ev.toolCallNames && ev.toolCallNames.length) {
+          body.textContent = '(assistant returned no text, only tool calls: ' + ev.toolCallNames.join(', ') + ')';
+        } else {
+          body.textContent = '(empty)';
+        }
+      } else if (ev.type === 'tool_call') {
+        const pre = document.createElement('pre');
+        pre.textContent = ev.name + '(' + JSON.stringify(ev.args, null, 2) + ')';
+        div.appendChild(pre);
+        div.removeChild(body);
+      } else if (ev.type === 'tool_result') {
+        if (!ev.ok) div.classList.add('failed');
+        const pre = document.createElement('pre');
+        const head = ev.durationMs != null ? '[' + ev.durationMs + 'ms] ' : '';
+        pre.textContent = head + (ev.output || '(no output)');
+        div.appendChild(pre);
+        div.removeChild(body);
+      } else if (ev.type === 'error') {
+        body.textContent = ev.message;
+      } else if (ev.type === 'done') {
+        const r = ev.result;
+        if (r.stoppedReason !== 'finished') div.classList.add('failed');
+        body.textContent =
+          `stoppedReason: ${r.stoppedReason}\n` +
+          `steps: ${r.steps}\n` +
+          `tokens: ${r.usage.totalTokens} (prompt=${r.usage.promptTokens}, completion=${r.usage.completionTokens})\n\n` +
+          (r.final || '(no final answer)');
+      }
+
+      if (body.textContent || body.childNodes.length) {
+        div.appendChild(body);
+      }
+      $log.appendChild(div);
+      $log.scrollTop = $log.scrollHeight;
+    }
+
+    // SSE connection
+    const es = new EventSource('/events');
+    es.onopen = () => {
+      // Server sends : connected; we just acknowledge
+    };
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        appendEvent(ev);
+        if (ev.type === 'done' || ev.type === 'error') {
+          busy = false;
+          $btn.disabled = false;
+          $btn.textContent = 'Run';
+          setStatus(ev.type === 'error' ? 'err' : (ev.result && ev.result.stoppedReason === 'finished' ? 'ok' : 'err'),
+                    ev.type === 'error' ? 'error' : 'done');
+        }
+      } catch (err) {
+        console.error('bad event:', err);
+      }
+    };
+    es.onerror = () => {
+      setStatus('err', 'sse disconnected');
+    };
+
+    // Run button
+    async function start() {
+      const task = $task.value.trim();
+      if (!task || busy) return;
+      busy = true;
+      $btn.disabled = true;
+      $btn.textContent = 'Running…';
+      $task.disabled = true;
+      $workdir.disabled = true;
+      setStatus('busy', 'running');
+      try {
+        const res = await fetch('/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task, workdir: $workdir.value.trim() || undefined }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          appendEvent({ type: 'error', message: 'POST /run failed: ' + (err.error || res.status) });
+          busy = false;
+          $btn.disabled = false;
+          $btn.textContent = 'Run';
+          $task.disabled = false;
+          $workdir.disabled = false;
+          setStatus('err', 'failed to start');
+        }
+      } catch (err) {
+        appendEvent({ type: 'error', message: 'fetch failed: ' + err.message });
+        busy = false;
+        $btn.disabled = false;
+        $btn.textContent = 'Run';
+        $task.disabled = false;
+        $workdir.disabled = false;
+        setStatus('err', 'network error');
+      }
+    }
+
+    $btn.addEventListener('click', start);
+    $task.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) start();
+    });
+  </script>
+</body>
+</html>
