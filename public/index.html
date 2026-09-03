@@ -3,324 +3,351 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>swe-agent · web</title>
+  <title>swe-agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
-    :root {
-      --bg: #0f1115;
-      --bg-2: #181b22;
-      --fg: #e6e8eb;
-      --fg-dim: #8b93a1;
-      --border: #262a33;
-      --accent: #4a9eff;
-      --ok: #3ecf8e;
-      --warn: #f5a524;
-      --err: #ff5470;
-      --err-bg: #2a1014;
-      --code-bg: #0a0c10;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; }
     body {
-      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-            "Microsoft YaHei", Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-      display: flex;
-      flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                   "Microsoft YaHei", Roboto, sans-serif;
     }
-    header {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-2);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
-    header .status {
-      margin-left: auto;
-      font-size: 12px;
-      color: var(--fg-dim);
-    }
-    header .status .dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--fg-dim);
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-    header .status.busy .dot { background: var(--warn); animation: pulse 1s infinite; }
-    header .status.ok .dot { background: var(--ok); }
-    header .status.err .dot { background: var(--err); }
-    @keyframes pulse { 50% { opacity: 0.4; } }
-
-    .input-bar {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-2);
-      display: grid;
-      grid-template-columns: 1fr 2fr auto;
-      gap: 8px;
-    }
-    .input-bar input, .input-bar button {
-      font: inherit;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--fg);
-    }
-    .input-bar input:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-    .input-bar input:disabled { opacity: 0.5; }
-    .input-bar button {
-      background: var(--accent);
-      color: white;
-      border-color: var(--accent);
-      cursor: pointer;
-      font-weight: 500;
-      min-width: 90px;
-    }
-    .input-bar button:disabled { background: #555; border-color: #555; cursor: not-allowed; }
-    .input-bar button:hover:not(:disabled) { filter: brightness(1.1); }
-
-    #log {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px 20px;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 13px;
-    }
-    .event {
-      border-left: 3px solid var(--border);
-      background: var(--bg-2);
-      margin-bottom: 8px;
-      padding: 8px 12px;
-      border-radius: 0 4px 4px 0;
-      word-wrap: break-word;
-    }
-    .event .head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--fg-dim);
-      margin-bottom: 4px;
-    }
-    .event .head .tag {
-      display: inline-block;
-      padding: 1px 6px;
-      border-radius: 3px;
-      font-weight: 600;
-      font-size: 11px;
-      text-transform: uppercase;
-      background: var(--border);
-      color: var(--fg);
-    }
-    .event .head .step { color: var(--fg-dim); }
-    .event pre {
-      margin: 4px 0 0;
-      padding: 8px 10px;
-      background: var(--code-bg);
-      border-radius: 4px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 320px;
-      overflow-y: auto;
-      font-size: 12.5px;
-    }
-    .event .body { white-space: pre-wrap; }
-
-    .event.start { border-left-color: var(--accent); }
-    .event.start .head .tag { background: var(--accent); }
-
-    .event.assistant { border-left-color: #7d8cff; }
-    .event.assistant .head .tag { background: #7d8cff; }
-
-    .event.tool_call { border-left-color: var(--warn); }
-    .event.tool_call .head .tag { background: var(--warn); color: #000; }
-
-    .event.tool_result { border-left-color: var(--ok); }
-    .event.tool_result .head .tag { background: var(--ok); color: #000; }
-    .event.tool_result.failed {
-      border-left-color: var(--err);
-      background: var(--err-bg);
-    }
-    .event.tool_result.failed .head .tag { background: var(--err); color: #000; }
-
-    .event.error { border-left-color: var(--err); background: var(--err-bg); }
-    .event.error .head .tag { background: var(--err); color: #000; }
-
-    .event.done { border-left-color: var(--ok); }
-    .event.done .head .tag { background: var(--ok); color: #000; }
-    .event.done.failed { border-left-color: var(--err); background: var(--err-bg); }
-    .event.done.failed .head .tag { background: var(--err); color: #000; }
+    /* Slim scrollbar */
+    .scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 9999px; }
+    .scroll-thin::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+    /* Fade-in for new messages */
+    .msg-enter { animation: msgIn 0.18s ease-out; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    /* Thinking dots */
+    .dot { animation: dotBlink 1.4s infinite; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes dotBlink { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+    /* Auto-grow textarea */
+    textarea { field-sizing: content; }
   </style>
 </head>
-<body>
-  <header>
-    <h1>swe-agent</h1>
-    <span class="status" id="status"><span class="dot"></span><span id="status-text">idle</span></span>
-  </header>
+<body class="h-screen overflow-hidden bg-zinc-50 text-zinc-900 antialiased">
+  <div id="app" class="flex h-full">
 
-  <div class="input-bar">
-    <input id="workdir" placeholder="工作目录（可选，留空用 .env）" spellcheck="false" />
-    <input id="task" placeholder="任务描述，例如：修一下 src/foo.ts 的 off-by-one" spellcheck="false" />
-    <button id="run-btn">Run</button>
+    <!-- ========== Sidebar: history (reserved) ========== -->
+    <aside class="w-72 border-r border-zinc-200 bg-white flex flex-col flex-shrink-0">
+      <div class="p-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-zinc-900 flex items-center justify-center text-white text-sm font-semibold">s</div>
+          <span class="font-semibold tracking-tight">swe-agent</span>
+        </div>
+        <button @click="newChat"
+                class="px-3 py-1.5 text-xs border border-zinc-200 rounded-xl hover:bg-zinc-50 transition"
+                title="新对话">
+          + 新对话
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-2 scroll-thin">
+        <div class="text-[11px] text-zinc-400 px-3 py-2 uppercase tracking-wider font-medium">历史</div>
+        <div v-for="h in history" :key="h.id"
+             @click="loadHistory(h)"
+             :class="currentId === h.id ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-700 hover:bg-zinc-50'"
+             class="px-3 py-2 rounded-xl cursor-pointer text-sm truncate transition mb-1 flex items-center gap-2">
+          <span class="text-zinc-400 text-xs">💬</span>
+          <span class="truncate">{{ h.title }}</span>
+        </div>
+        <div v-if="history.length === 0" class="text-xs text-zinc-400 px-3 py-4 text-center">
+          暂无历史
+        </div>
+        <div class="text-[10px] text-zinc-300 px-3 py-3 italic">
+          * 历史记录为前端占位，后端暂未持久化
+        </div>
+      </div>
+
+      <div class="p-3 border-t border-zinc-200 text-xs text-zinc-500 flex items-center justify-between">
+        <span>v0.1</span>
+        <span>MiniMax-M3</span>
+      </div>
+    </aside>
+
+    <!-- ========== Main area ========== -->
+    <main class="flex-1 flex flex-col min-w-0">
+
+      <!-- Header -->
+      <header class="h-14 border-b border-zinc-200 bg-white px-6 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-2 text-sm min-w-0">
+          <span class="font-medium text-zinc-900">当前对话</span>
+          <span class="text-zinc-300">·</span>
+          <span class="text-zinc-500 truncate">{{ workdir || '默认工作目录' }}</span>
+        </div>
+        <div class="flex items-center gap-2 text-sm flex-shrink-0">
+          <span :class="statusClass" class="w-2 h-2 rounded-full"></span>
+          <span class="text-zinc-600">{{ statusText }}</span>
+          <span v-if="currentStep" class="text-zinc-400 text-xs ml-1">· {{ currentStep }}</span>
+        </div>
+      </header>
+
+      <!-- Messages (streaming) -->
+      <div ref="logEl" class="flex-1 overflow-y-auto px-6 py-6 scroll-thin">
+        <!-- Empty state -->
+        <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-center">
+          <div class="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center text-white text-xl mb-4">✨</div>
+          <div class="text-lg font-medium text-zinc-900">开始一个新任务</div>
+          <div class="text-sm text-zinc-500 mt-3">试试这些：</div>
+          <div class="flex flex-wrap justify-center gap-2 mt-3 max-w-xl">
+            <button v-for="ex in examples" :key="ex"
+                    @click="taskInput = ex"
+                    class="px-3 py-1.5 bg-white border border-zinc-200 hover:border-zinc-400 hover:bg-zinc-50 rounded-xl text-xs transition">
+              {{ ex }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Message bubbles -->
+        <div v-for="m in messages" :key="m.id" class="msg-enter mb-4">
+          <!-- User -->
+          <div v-if="m.type === 'user'" class="flex justify-end">
+            <div class="max-w-[80%] bg-zinc-900 text-white px-4 py-2.5 rounded-2xl">
+              <div class="text-[11px] text-zinc-400 mb-1">你</div>
+              <div class="whitespace-pre-wrap break-words text-sm leading-relaxed">{{ m.text }}</div>
+            </div>
+          </div>
+
+          <!-- Assistant -->
+          <div v-else-if="m.type === 'assistant'" class="flex justify-start">
+            <div class="max-w-[85%] bg-white border border-zinc-200 px-4 py-2.5 rounded-2xl">
+              <div class="text-[11px] text-zinc-400 mb-1">
+                <span class="font-medium text-zinc-500">assistant</span>
+                <span v-if="m.step" class="ml-1">· step {{ m.step }}</span>
+              </div>
+              <div v-if="m.text" class="whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-800">{{ m.text }}</div>
+              <div v-else class="text-zinc-400 italic text-sm">(仅工具调用)</div>
+            </div>
+          </div>
+
+          <!-- Tool call -->
+          <div v-else-if="m.type === 'tool_call'" class="flex justify-start">
+            <div class="max-w-[85%] bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl">
+              <div class="flex items-center gap-2 text-sm font-mono">
+                <span class="text-amber-700 font-semibold">→ {{ m.name }}</span>
+                <span v-if="m.step" class="text-[11px] text-amber-600/70">step {{ m.step }}</span>
+              </div>
+              <pre v-if="m.args" class="mt-1.5 text-xs text-zinc-700 whitespace-pre-wrap break-all max-h-40 overflow-y-auto scroll-thin font-mono">{{ m.args }}</pre>
+            </div>
+          </div>
+
+          <!-- Tool result -->
+          <div v-else-if="m.type === 'tool_result'" class="flex justify-start">
+            <div :class="m.ok ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'"
+                 class="max-w-[85%] border px-3 py-2 rounded-xl">
+              <div class="flex items-center gap-2 text-sm font-mono">
+                <span :class="m.ok ? 'text-emerald-700' : 'text-rose-700'" class="font-semibold">
+                  {{ m.ok ? '✓' : '✗' }} {{ m.name }}
+                </span>
+                <span class="text-[11px] text-zinc-400">{{ m.durationMs }}ms</span>
+              </div>
+              <pre v-if="m.output" class="mt-1.5 text-xs whitespace-pre-wrap break-all max-h-60 overflow-y-auto scroll-thin font-mono"
+                   :class="m.ok ? 'text-zinc-700' : 'text-rose-800'">{{ m.output }}</pre>
+            </div>
+          </div>
+
+          <!-- Done -->
+          <div v-else-if="m.type === 'done'" class="flex justify-start">
+            <div :class="m.success ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'"
+                 class="max-w-[85%] border px-4 py-3 rounded-2xl">
+              <div class="flex items-center gap-2 mb-1">
+                <span :class="m.success ? 'text-emerald-700' : 'text-rose-700'" class="font-semibold text-sm">
+                  {{ m.success ? '✓ 任务完成' : '⚠ 异常结束' }}
+                </span>
+                <span class="text-[11px] text-zinc-400">steps={{ m.steps }} · tokens={{ m.usage.totalTokens }} (p={{ m.usage.promptTokens }} c={{ m.usage.completionTokens }})</span>
+              </div>
+              <div v-if="m.final" class="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed">{{ m.final }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thinking dots while running -->
+        <div v-if="status === 'running' && !lastIsDone" class="flex justify-start msg-enter">
+          <div class="bg-white border border-zinc-200 px-4 py-3 rounded-2xl flex items-center gap-1.5">
+            <span class="dot text-zinc-400 text-lg leading-none">●</span>
+            <span class="dot text-zinc-400 text-lg leading-none">●</span>
+            <span class="dot text-zinc-400 text-lg leading-none">●</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input bar -->
+      <div class="border-t border-zinc-200 bg-white p-4 flex-shrink-0">
+        <div class="max-w-3xl mx-auto">
+          <div class="flex items-end gap-2 bg-white border border-zinc-200 rounded-2xl p-2 focus-within:border-zinc-400 transition shadow-sm">
+            <input v-model="workdirInput"
+                   placeholder="工作目录（可选）"
+                   class="flex-shrink-0 w-48 px-3 py-2 text-xs bg-zinc-50 rounded-xl focus:outline-none font-mono" />
+            <textarea v-model="taskInput"
+                      @keydown.enter.exact.prevent="onSubmit"
+                      :disabled="busy"
+                      rows="1"
+                      placeholder="描述你的任务…  (Enter 发送，Shift+Enter 换行)"
+                      class="flex-1 px-2 py-2 text-sm bg-transparent focus:outline-none resize-none max-h-40 scroll-thin"></textarea>
+            <button @click="onSubmit"
+                    :disabled="busy || !taskInput.trim()"
+                    class="px-4 py-2 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-700 disabled:bg-zinc-200 disabled:text-zinc-400 disabled:cursor-not-allowed transition">
+              {{ busy ? '运行中' : '发送' }}
+            </button>
+          </div>
+          <div class="text-[11px] text-zinc-400 text-center mt-2">
+            Enter 发送 · Shift+Enter 换行 · 任务流式输出
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
 
-  <div id="log"></div>
-
   <script>
-    const $log = document.getElementById('log');
-    const $task = document.getElementById('task');
-    const $workdir = document.getElementById('workdir');
-    const $btn = document.getElementById('run-btn');
-    const $status = document.getElementById('status');
-    const $statusText = document.getElementById('status-text');
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
-    let busy = false;
+    createApp({
+      setup() {
+        const taskInput = ref('');
+        const workdirInput = ref('');
+        const busy = ref(false);
+        const status = ref('idle');
+        const workdir = ref('');
+        const currentStep = ref('');
+        const messages = ref([]);
+        const currentId = ref(1);
+        const logEl = ref(null);
 
-    function setStatus(kind, text) {
-      $status.className = 'status ' + (kind || '');
-      $statusText.textContent = text;
-    }
+        const examples = [
+          '修一下 src/foo.ts 的 off-by-one',
+          '给 parser 加一个单元测试',
+          '重构 auth 模块',
+        ];
 
-    function appendEvent(ev) {
-      const div = document.createElement('div');
-      div.className = 'event ' + ev.type;
+        // Mock history: backend does not persist yet, this is reserved for the layout.
+        // 后端暂未持久化，这里是占位数据。
+        const history = ref([
+          { id: 1, title: '修一下 login 报错' },
+          { id: 2, title: '添加 README 文档' },
+          { id: 3, title: '重构 auth 模块' },
+        ]);
 
-      const head = document.createElement('div');
-      head.className = 'head';
-      const tag = document.createElement('span');
-      tag.className = 'tag';
-      tag.textContent = ev.type;
-      head.appendChild(tag);
-      if (typeof ev.step === 'number' && ev.step > 0) {
-        const s = document.createElement('span');
-        s.className = 'step';
-        s.textContent = 'step ' + ev.step;
-        head.appendChild(s);
-      }
-      div.appendChild(head);
+        const statusText = computed(() => ({
+          idle: '空闲', running: '运行中', done: '已完成', error: '出错',
+        })[status.value] || status.value);
 
-      const body = document.createElement('div');
-      body.className = 'body';
+        const statusClass = computed(() => ({
+          idle: 'bg-zinc-300',
+          running: 'bg-amber-400 animate-pulse',
+          done: 'bg-emerald-400',
+          error: 'bg-rose-400',
+        })[status.value]);
 
-      if (ev.type === 'start') {
-        body.textContent = `任务: ${ev.task}\nworkdir: ${ev.workdir}\nprovider: ${ev.provider} · model: ${ev.model}`;
-      } else if (ev.type === 'assistant') {
-        const txt = (ev.content || '').trim();
-        if (txt) {
-          body.textContent = txt;
-        } else if (ev.toolCallNames && ev.toolCallNames.length) {
-          body.textContent = '(assistant returned no text, only tool calls: ' + ev.toolCallNames.join(', ') + ')';
-        } else {
-          body.textContent = '(empty)';
-        }
-      } else if (ev.type === 'tool_call') {
-        const pre = document.createElement('pre');
-        pre.textContent = ev.name + '(' + JSON.stringify(ev.args, null, 2) + ')';
-        div.appendChild(pre);
-        div.removeChild(body);
-      } else if (ev.type === 'tool_result') {
-        if (!ev.ok) div.classList.add('failed');
-        const pre = document.createElement('pre');
-        const head = ev.durationMs != null ? '[' + ev.durationMs + 'ms] ' : '';
-        pre.textContent = head + (ev.output || '(no output)');
-        div.appendChild(pre);
-        div.removeChild(body);
-      } else if (ev.type === 'error') {
-        body.textContent = ev.message;
-      } else if (ev.type === 'done') {
-        const r = ev.result;
-        if (r.stoppedReason !== 'finished') div.classList.add('failed');
-        body.textContent =
-          `stoppedReason: ${r.stoppedReason}\n` +
-          `steps: ${r.steps}\n` +
-          `tokens: ${r.usage.totalTokens} (prompt=${r.usage.promptTokens}, completion=${r.usage.completionTokens})\n\n` +
-          (r.final || '(no final answer)');
-      }
-
-      if (body.textContent || body.childNodes.length) {
-        div.appendChild(body);
-      }
-      $log.appendChild(div);
-      $log.scrollTop = $log.scrollHeight;
-    }
-
-    // SSE connection
-    const es = new EventSource('/events');
-    es.onopen = () => {
-      // Server sends : connected; we just acknowledge
-    };
-    es.onmessage = (e) => {
-      try {
-        const ev = JSON.parse(e.data);
-        appendEvent(ev);
-        if (ev.type === 'done' || ev.type === 'error') {
-          busy = false;
-          $btn.disabled = false;
-          $btn.textContent = 'Run';
-          setStatus(ev.type === 'error' ? 'err' : (ev.result && ev.result.stoppedReason === 'finished' ? 'ok' : 'err'),
-                    ev.type === 'error' ? 'error' : 'done');
-        }
-      } catch (err) {
-        console.error('bad event:', err);
-      }
-    };
-    es.onerror = () => {
-      setStatus('err', 'sse disconnected');
-    };
-
-    // Run button
-    async function start() {
-      const task = $task.value.trim();
-      if (!task || busy) return;
-      busy = true;
-      $btn.disabled = true;
-      $btn.textContent = 'Running…';
-      $task.disabled = true;
-      $workdir.disabled = true;
-      setStatus('busy', 'running');
-      try {
-        const res = await fetch('/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task, workdir: $workdir.value.trim() || undefined }),
+        const lastIsDone = computed(() => {
+          const last = messages.value[messages.value.length - 1];
+          return last && last.type === 'done';
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          appendEvent({ type: 'error', message: 'POST /run failed: ' + (err.error || res.status) });
-          busy = false;
-          $btn.disabled = false;
-          $btn.textContent = 'Run';
-          $task.disabled = false;
-          $workdir.disabled = false;
-          setStatus('err', 'failed to start');
-        }
-      } catch (err) {
-        appendEvent({ type: 'error', message: 'fetch failed: ' + err.message });
-        busy = false;
-        $btn.disabled = false;
-        $btn.textContent = 'Run';
-        $task.disabled = false;
-        $workdir.disabled = false;
-        setStatus('err', 'network error');
-      }
-    }
 
-    $btn.addEventListener('click', start);
-    $task.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) start();
-    });
+        function pushMsg(m) {
+          m.id = Date.now() + Math.random();
+          messages.value.push(m);
+          nextTick(() => {
+            if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight;
+          });
+        }
+
+        // ---- SSE event handler (consumes the backend's reserved UI events) ----
+        // ---- SSE 事件处理：消费后端给 UI 的事件流 ----
+        function handleEvent(ev) {
+          if (ev.type === 'start') {
+            status.value = 'running';
+            workdir.value = ev.workdir;
+            pushMsg({ type: 'user', text: ev.task });
+          } else if (ev.type === 'assistant') {
+            currentStep.value = `step ${ev.step}`;
+            pushMsg({ type: 'assistant', step: ev.step, text: ev.content || '' });
+          } else if (ev.type === 'tool_call') {
+            pushMsg({
+              type: 'tool_call', step: ev.step, name: ev.name,
+              args: JSON.stringify(ev.args, null, 2),
+            });
+          } else if (ev.type === 'tool_result') {
+            pushMsg({
+              type: 'tool_result', name: ev.name, ok: ev.ok,
+              output: ev.output, durationMs: ev.durationMs,
+            });
+          } else if (ev.type === 'error') {
+            status.value = 'error';
+            pushMsg({ type: 'tool_result', name: 'ERROR', ok: false, output: ev.message, durationMs: 0 });
+          } else if (ev.type === 'done') {
+            const r = ev.result;
+            const success = r.stoppedReason === 'finished';
+            status.value = success ? 'done' : 'error';
+            currentStep.value = '';
+            pushMsg({
+              type: 'done', success,
+              steps: r.steps, usage: r.usage, final: r.final,
+            });
+            busy.value = false;
+          }
+        }
+
+        let es;
+        onMounted(() => {
+          es = new EventSource('/events');
+          es.onmessage = (e) => {
+            try { handleEvent(JSON.parse(e.data)); }
+            catch (err) { console.error('bad event', err); }
+          };
+          // EventSource auto-reconnects on close; no manual handling needed.
+        });
+
+        async function onSubmit() {
+          const task = taskInput.value.trim();
+          if (!task || busy.value) return;
+          busy.value = true;
+          messages.value = [];  // start a fresh run
+          status.value = 'idle';
+          try {
+            const res = await fetch('/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                task,
+                workdir: workdirInput.value.trim() || undefined,
+              }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              pushMsg({ type: 'tool_result', name: 'FETCH', ok: false, output: err.error || String(res.status), durationMs: 0 });
+              busy.value = false;
+              status.value = 'error';
+            }
+          } catch (err) {
+            pushMsg({ type: 'tool_result', name: 'FETCH', ok: false, output: err.message, durationMs: 0 });
+            busy.value = false;
+            status.value = 'error';
+          }
+        }
+
+        function newChat() {
+          messages.value = [];
+          status.value = 'idle';
+          currentStep.value = '';
+          taskInput.value = '';
+        }
+
+        function loadHistory(h) {
+          currentId.value = h.id;
+          // Reserved: would load conversation from backend once persistence exists.
+        }
+
+        return {
+          taskInput, workdirInput, busy, status, workdir, currentStep,
+          messages, currentId, history, examples, logEl,
+          statusText, statusClass, lastIsDone,
+          onSubmit, newChat, loadHistory,
+        };
+      },
+    }).mount('#app');
   </script>
 </body>
 </html>
