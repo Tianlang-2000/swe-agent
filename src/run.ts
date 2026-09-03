@@ -12,6 +12,18 @@
  * Anything after the flags is treated as the task string, so you can pass
  * multi-word tasks without quoting tricks.
  */
+/**
+ * CLI 入口：第一个参数是任务，第二个可选参数是 workdir。
+ * agent 会在该 workdir 下操作并把进度输出到 stdout。
+ *
+ * 用法：
+ *   pnpm tsx src/run.ts "fix the off-by-one in src/foo.ts"
+ *   pnpm tsx src/run.ts "add a README" ./some-project
+ *   pnpm tsx src/run.ts --workdir D:\path\to\project "refactor the auth module"
+ *   pnpm task 42    "answer the question with code"
+ *
+ * flag 之后的所有内容都被当作 task 字符串，多词任务不需要加引号。
+ */
 import { resolve } from 'node:path';
 import { runTask } from './index.js';
 

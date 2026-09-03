@@ -6,11 +6,16 @@ import { rgPath } from '@vscode/ripgrep';
 import type { RegisteredTool, ToolResult } from '../types.js';
 
 // ---- path safety ---------------------------------------------------------
+// ---- 路径安全 -------------------------------------------------------------
 
 /**
  * Resolve a user-supplied path against the workdir and reject anything that
  * tries to escape via `..` or absolute paths. We do this for every file tool
  * to keep the LLM inside the working directory.
+ */
+/**
+ * 把用户提供的路径基于 workdir 解析，并拒绝任何通过 `..` 或绝对路径逃逸的尝试。
+ * 每个 file 工具都过这一关，确保 LLM 始终在 workdir 之内活动。
  */
 function safePath(input: string, workdir: string): string {
   const abs = isAbsolute(input) ? input : resolve(workdir, input);
@@ -26,6 +31,7 @@ function truncate(s: string, cap: number): string {
   return s.slice(0, cap) + `\n\n[truncated to ${cap} chars of ${s.length}]`;
 }
 
+// ---- read_file -----------------------------------------------------------
 // ---- read_file -----------------------------------------------------------
 
 const ReadFileArgs = z.object({
@@ -56,6 +62,7 @@ export const readFileTool: RegisteredTool = {
 };
 
 // ---- write_file ----------------------------------------------------------
+// ---- write_file ----------------------------------------------------------
 
 const WriteFileArgs = z.object({
   path: z.string().min(1).describe('File path relative to the working directory.'),
@@ -79,6 +86,7 @@ export const writeFileTool: RegisteredTool = {
       await mkdir(dirname(abs), { recursive: true });
     } else {
       // surface a clear error if parent is missing
+      // 父目录不存在时，给出一个明确的错误
       try {
         await stat(dirname(abs));
       } catch {
@@ -90,6 +98,7 @@ export const writeFileTool: RegisteredTool = {
   },
 };
 
+// ---- list_dir ------------------------------------------------------------
 // ---- list_dir ------------------------------------------------------------
 
 const ListDirArgs = z.object({
@@ -128,6 +137,7 @@ export const listDirTool: RegisteredTool = {
 };
 
 // ---- search (ripgrep) ----------------------------------------------------
+// ---- search (ripgrep) ----------------------------------------------------
 
 const SearchArgs = z.object({
   pattern: z.string().min(1).describe('Regex pattern to search for. Anchored per line.'),
@@ -142,6 +152,11 @@ const SearchArgs = z.object({
  * ripgrep ships as a platform-specific binary via @vscode/ripgrep. We shell out
  * to it because linking its native API in pure JS is more work than it's worth
  * for a minimal agent. The package exports the resolved binary path as `rgPath`.
+ */
+/**
+ * ripgrep 通过 @vscode/ripgrep 以平台相关的二进制形式提供。我们直接 shell out 调用，
+ * 因为用纯 JS 链接它的 native API 对一个 minimal agent 来说成本太高。
+ * 该包把解析后的二进制路径导出为 `rgPath`。
  */
 function locateRipgrep(): string {
   if (!rgPath) {
@@ -198,6 +213,7 @@ export const searchTool: RegisteredTool = {
           child.kill('SIGTERM');
         } catch {
           /* ignore */
+          /* 忽略 */
         }
       }, ctx.timeoutMs);
 
@@ -215,6 +231,7 @@ export const searchTool: RegisteredTool = {
       child.on('close', (code) => {
         clearTimeout(timer);
         // rg exit codes: 0 = match, 1 = no match, 2 = error
+        // rg 退出码：0 = 匹配，1 = 无匹配，2 = 错误
         if (killed) {
           resolve({ ok: false, output: err, error: 'timeout' });
           return;

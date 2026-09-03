@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import process from 'node:process';
 
 export type LLMProvider = 'deepseek' | 'minimax';
 

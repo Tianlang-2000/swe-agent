@@ -15,6 +15,23 @@
  *
  * Only one task runs at a time; new POST /run while busy returns 409.
  */
+/**
+ * 给 agent 用的极简 web UI：HTTP server + SSE 流。
+ *
+ *   GET  /         -> public/index.html
+ *   GET  /events   -> 代理进度的 Server-Sent Events 流
+ *   POST /run      -> 启动一个任务；body: { task, workdir? }
+ *
+ * /events 上发的事件：
+ *   { type: 'start',        task, workdir }
+ *   { type: 'assistant',    step, content }
+ *   { type: 'tool_call',    step, name, args }
+ *   { type: 'tool_result',  step, name, ok, output, durationMs }
+ *   { type: 'error',        message }
+ *   { type: 'done',         result: { stoppedReason, final, steps, usage } }
+ *
+ * 同一时间只能跑一个任务；忙时再次 POST /run 会返回 409。
+ */
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -35,6 +52,7 @@ if (!existsSync(PUBLIC_DIR)) {
 }
 
 // ---------- Event types ----------
+// ---------- 事件类型 ----------
 
 type AgentEvent =
   | { type: 'start'; task: string; workdir: string; model: string; provider: string }
@@ -53,6 +71,7 @@ type AgentEvent =
     };
 
 // ---------- Job state (single in-flight task) ----------
+// ---------- 任务状态（同一时间只跑一个） ----------
 
 interface Job {
   clients: Set<ServerResponse>;
@@ -73,6 +92,7 @@ function broadcast(event: AgentEvent): void {
 }
 
 // ---------- Run the agent, broadcasting events ----------
+// ---------- 跑 agent，把事件广播出去 ----------
 
 async function runAgent(task: string, workdir: string | undefined): Promise<void> {
   let stepCounter = 0;
@@ -95,6 +115,7 @@ async function runAgent(task: string, workdir: string | undefined): Promise<void
           toolCallNames: resp.toolCalls.map((c) => c.name),
         });
         // Emit a tool_call event per call so the UI shows it before the result.
+        // 每个 tool call 单独发一个 tool_call 事件，让 UI 在结果出来前先看到调用。
         for (const c of resp.toolCalls) {
           broadcast({
             type: 'tool_call',
@@ -144,6 +165,7 @@ async function runAgent(task: string, workdir: string | undefined): Promise<void
 }
 
 // ---------- HTTP routing ----------
+// ---------- HTTP 路由 ----------
 
 function setCors(res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -176,6 +198,7 @@ const server = createServer(async (req, res) => {
   const url = req.url ?? '/';
 
   // Static index.html
+  // 静态 index.html
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
     const indexPath = join(PUBLIC_DIR, 'index.html');
     if (!existsSync(indexPath)) {
@@ -189,6 +212,7 @@ const server = createServer(async (req, res) => {
   }
 
   // SSE stream
+  // SSE 流
   if (req.method === 'GET' && url === '/events') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -213,6 +237,7 @@ const server = createServer(async (req, res) => {
   }
 
   // Start a task
+  // 启动一个任务
   if (req.method === 'POST' && url === '/run') {
     if (job.busy) {
       sendJson(res, 409, { error: 'Agent is already running. Wait for the current task to finish.' });
@@ -240,6 +265,7 @@ const server = createServer(async (req, res) => {
     job.busy = true;
     sendJson(res, 202, { ok: true, message: 'Task started. Watch /events for progress.' });
     // Fire-and-forget; runAgent manages job.busy in finally.
+    // fire-and-forget；runAgent 在 finally 里会把 job.busy 复位。
     runAgent(task, parsed.workdir).catch((err) => {
       console.error('runAgent uncaught:', err);
       job.busy = false;
@@ -248,6 +274,7 @@ const server = createServer(async (req, res) => {
   }
 
   // Status
+  // 状态
   if (req.method === 'GET' && url === '/status') {
     sendJson(res, 200, { busy: job.busy, clients: job.clients.size });
     return;

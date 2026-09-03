@@ -15,6 +15,7 @@ export { readFileTool, writeFileTool, listDirTool, searchTool } from './tools/fi
 export * from './types.js';
 
 /** Build a default tool registry wired with the four core tools. */
+/** 构造一个默认的工具注册表，预装四个核心工具。 */
 export function buildDefaultRegistry(): ToolRegistry {
   return new ToolRegistry()
     .register(terminalExecTool)
@@ -27,6 +28,10 @@ export function buildDefaultRegistry(): ToolRegistry {
 /**
  * One-shot helper: load config, build registry + client, run a task, return
  * the result. Used by the demo script and by anyone who wants a turnkey run.
+ */
+/**
+ * 一站式 helper：加载 config，构造 registry + client，跑一个任务，返回结果。
+ * 演示脚本和想直接跑一次的人都会用到。
  */
 export async function runTask(userTask: string, overrides?: { workdir?: string; maxSteps?: number }) {
   const cfg = loadConfig();

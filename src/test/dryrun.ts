@@ -5,6 +5,13 @@
  *
  * Run with:  pnpm tsx src/test/dryrun.ts
  */
+/**
+ * 干跑冒烟测试：用假 LLM 驱动 agent 循环，让它发出一段确定的 tool-call 序列。
+ * 这样能验证 loop、tool registry、executor、scheduler、prompt 的串接，
+ * 不需要真正的 API key。
+ *
+ * 运行：pnpm tsx src/test/dryrun.ts
+ */
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,6 +33,8 @@ class ScriptedLLM extends LLMClient {
   constructor(steps: ChatResponse[]) {
     // We never call real methods on the parent, but we still need to satisfy
     // the constructor. Pass a dummy config.
+    // 父类的真方法我们一个都不会调用，但还是要满足父类的构造函数，
+    // 所以传一个假 config 进去。
     super({
       provider: 'deepseek',
       apiKey: 'fake',
@@ -72,6 +81,9 @@ async function main() {
   // Script: each turn must include a tool_call OR a final assistant message
   // without tool_calls. The loop terminates as soon as a turn has no tool
   // calls, so the plan-only turn has to be paired with a tool call.
+  // 脚本规则：每轮要么带 tool_call，要么是一条不带 tool_call 的最终消息。
+  // loop 会在"没有 tool_call 的轮"立即终止，所以"只发 plan"的轮
+  // 必须配一个 tool_call。
   const scripted: ChatResponse[] = [
     mkResponse('<plan>\n1. Inspect directory\n2. Write a marker file\n3. Verify it\n</plan>', [{
       id: 'call_1',
@@ -131,9 +143,12 @@ async function main() {
 
   // Plan tracker should have advanced to the end of a 3-step plan.
   // We can verify indirectly: after the run, no further plan is needed.
+  // 计划追踪器应该已经推进到 3 步计划的末尾。
+  // 这里只能间接验证：跑完之后不需要再要计划了。
 
   // Sanity: rerun the write_file handler on its own to make sure the
   // standalone tool also works.
+  // 健全性：单独再跑一次 write_file handler，确认独立使用也没问题。
   await writeFileSync(resolve(SCRATCH, 'second.txt'), 'standalone test\n', 'utf8');
   if (!existsSync(resolve(SCRATCH, 'second.txt'))) {
     console.error('FAIL: standalone write failed');

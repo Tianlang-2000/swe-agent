@@ -8,6 +8,15 @@
  *
  * Run with:  pnpm demo
  */
+/**
+ * 演示运行器：一个 agent 用几步就能完成的小型自包含任务。
+ *
+ * 我们让 agent 操作一个临时目录，要求它创建一个有特定结构的文件，
+ * 然后验证结果。这样能跑通完整循环（plan、terminal_exec、write_file、read_file），
+ * 又不依赖真实项目的代码库。
+ *
+ * 运行：pnpm demo
+ */
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -27,6 +36,7 @@ function setupScratch() {
   }
   mkdirSync(SCRATCH, { recursive: true });
   // Seed with a starter file so the agent has something to inspect.
+  // 放一个起始文件，让 agent 有东西可读。
   const seed = `# scratch\n\nTODO: replace this with a Python hello-world script.\n`;
   const seedPath = resolve(SCRATCH, 'README.md');
   writeFileSync(seedPath, seed, 'utf8');
@@ -65,6 +75,7 @@ async function main() {
   console.log(`\n--- final answer ---\n${result.final}\n`);
 
   // Verify the side effect: hello.py should exist.
+  // 验证副作用：hello.py 应当存在。
   const helloPath = resolve(SCRATCH, 'hello.py');
   if (existsSync(helloPath)) {
     console.log(`--- hello.py on disk ---`);

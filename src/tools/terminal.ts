@@ -11,6 +11,10 @@ const ExecArgsSchema = z.object({
  * Run a command, capture stdout + stderr up to a byte cap, kill on timeout.
  * The output is truncated (not the process) to keep prompt sizes bounded.
  */
+/**
+ * 执行命令，捕获 stdout + stderr 到字节上限，超时则 kill。
+ * 截断的是输出（不是进程），以保证 prompt 大小可控。
+ */
 async function runCommand(
   command: string,
   ctx: ToolContext,
@@ -41,6 +45,7 @@ async function runCommand(
         child.kill('SIGTERM');
       } catch {
         /* ignore */
+        /* 忽略 */
       }
     }, timeoutMs);
 
