@@ -62,6 +62,128 @@ npm run web
 3. **Observe** —— 下一轮 LLM 看到 tool 结果，决定下一步
 4. **Stop** —— assistant 不再调工具时，循环结束
 
+## 架构图
+
+### 组件视图（数据怎么流）
+
+```mermaid
+graph TD
+    U["👤 用户"]
+
+    subgraph Entry["入口 Entry"]
+        CLI["run.ts / demo.ts"]
+        WEB["server.ts"]
+    end
+
+    subgraph WebUI["Web UI"]
+        BROWSER["浏览器 Vue 3 + Tailwind"]
+    end
+
+    subgraph Core["Agent 核心"]
+        LOOP["AgentLoop 主循环"]
+        PLAN["PlanTracker 计划追踪"]
+        HIST["chat history 内存数组"]
+    end
+
+    subgraph LLM["LLM 层"]
+        CLIENT["LLMClient OpenAI 兼容"]
+        EXT["DeepSeek / MiniMax API"]
+    end
+
+    subgraph Tools["工具层"]
+        REG["ToolRegistry"]
+        RUN["ToolRunner"]
+        T1["terminal_exec"]
+        T2["read_file"]
+        T3["write_file"]
+        T4["list_dir"]
+        T5["search"]
+    end
+
+    U --> CLI
+    U --> BROWSER
+    BROWSER <--> WEB
+    CLI --> LOOP
+    WEB --> LOOP
+    LOOP --> CLIENT
+    CLIENT --> EXT
+    EXT --> CLIENT
+    CLIENT --> LOOP
+    LOOP <--> PLAN
+    LOOP <--> HIST
+    LOOP --> RUN
+    RUN --> REG
+    REG --> T1
+    REG --> T2
+    REG --> T3
+    REG --> T4
+    REG --> T5
+    REG --> RUN
+    RUN --> LOOP
+    LOOP --> HIST
+    LOOP --> U
+    BROWSER --> U
+
+    classDef userStyle fill:#dbeafe,stroke:#1e40af,color:#0c1f4a
+    classDef entryStyle fill:#e0e7ff,stroke:#3730a3
+    classDef uiStyle fill:#fce7f3,stroke:#9d174d
+    classDef coreStyle fill:#dcfce7,stroke:#166534
+    classDef llmStyle fill:#f3e8ff,stroke:#6b21a8
+    classDef toolsStyle fill:#fef3c7,stroke:#854d0e
+    classDef extStyle fill:#fee2e2,stroke:#991b1b
+
+    class U userStyle
+    class CLI,WEB entryStyle
+    class BROWSER uiStyle
+    class LOOP,PLAN,HIST coreStyle
+    class CLIENT llmStyle
+    class REG,RUN,T1,T2,T3,T4,T5 toolsStyle
+    class EXT extStyle
+```
+
+### 单轮时序（一轮 observe → think → act）
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant L as AgentLoop
+    participant P as PlanTracker
+    participant C as LLMClient
+    participant A as LLM API
+    participant R as ToolRunner
+    participant T as Tool
+
+    U->>L: run task
+    L->>L: history push userTurn
+    Note over L: 进入 step 1 到 N 循环
+
+    loop 每个 step 上限 MAX_STEPS
+        L->>C: chat system history tools
+        C->>A: POST /chat/completions
+        A-->>C: ChatResponse
+        C-->>L: content toolCalls usage
+        L->>L: totalUsage 累加
+        L->>L: history push assistantTurn
+        L->>P: updateFromAssistant
+        L->>P: markStepDone
+
+        alt 没有 tool_calls 结束
+            L-->>U: AgentRunResult finished
+        else 有 tool_calls
+            L->>R: runAll 串行
+            loop 每个 tool_call
+                R->>T: invoke name args ctx
+                T-->>R: ToolResult
+                R-->>L: call result durationMs
+            end
+            L->>L: history push toolResult
+            Note over L: 进入下一轮
+        end
+    end
+
+    L-->>U: AgentRunResult max_steps
+```
+
 ---
 
 ## 项目结构
