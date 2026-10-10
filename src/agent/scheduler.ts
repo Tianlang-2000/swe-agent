@@ -1,29 +1,25 @@
-/**
- * Minimal plan tracker.
- *
- * The scheduler does not split the task itself — the LLM does. Our job is to
- * (a) notice when the assistant emits a `<plan>...</plan>` block, (b) keep the
- * most recent plan in memory, and (c) render it back into the system prompt
- * so the model has a stable "where am I in the task" anchor across turns.
- * 检测助手何时发出 `<plan>...</plan>` 代码块
- * 最新的计划保存在内存中
- * 将其渲染回系统提示符
- * This is intentionally regex-based. A real agent would want a structured
- * plan (e.g. todo list as a tool call), but for a minimal version, pulling
- * the plan out of free-form text keeps the LLM contract simple.
- */
-/**
- * 最小的计划追踪器。
- *
- * 调度器不自己拆分任务——那是 LLM 的事。我们要做的是：
- * (a) 检测助手何时发出 `<plan>...</plan>` 代码块；
- * (b) 把最新的计划保存在内存中；
- * (c) 把它渲染回系统提示里，让模型在多轮之间都有一个稳定的"我在任务哪个位置"锚点。
- *
- * 这里故意采用基于正则的实现。一个真正的 agent 会想要结构化的计划
- * （比如把 todo list 作为 tool call），但对于最小版本，
- * 直接从自由文本里抽 plan 能保持和 LLM 的契约尽量简单。
- */
+import { z } from 'zod';
+
+export const planStepSchema = z.object({
+  step: z.string().trim().min(1),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+}).strict();
+
+// Codex-style update_plan: submit a complete snapshot, never parse prose.
+export const updatePlanSchema = z.object({
+  explanation: z.string().optional(),
+  plan: z.array(planStepSchema).refine(
+    (steps) => steps.filter((step) => step.status === 'in_progress').length <= 1,
+    'At most one step can be in_progress at a time.',
+  ),
+}).strict();
+
+export type PlanStep = z.infer<typeof planStepSchema>;
+export type PlanStatus = PlanStep['status'];
+export type PlanUpdate = z.infer<typeof updatePlanSchema>;
+export type PlanSnapshot = PlanUpdate;
+
+/** Session-local state. Validate before replacing; completion is model-reported. */
 export class PlanTracker {
   private steps: string[] = [];
   private currentIndex: number = 0;

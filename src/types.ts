@@ -5,16 +5,12 @@ export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface ChatMessage {
   role: Role;
-  /** For assistant: text content. For tool: tool result payload. */
   /** assistant 消息：纯文本内容。tool 消息：工具返回的结果载荷。 */
   content: string;
-  /** Set on assistant messages that produced tool calls. */
   /** 仅在 assistant 消息产生了 tool_calls 时设置。 */
   tool_calls?: ToolCall[];
-  /** For tool messages: which call this is a result for. */
   /** tool 消息：表示这是哪一次调用的结果。 */
   tool_call_id?: string;
-  /** For assistant messages: name (optional, used in multi-agent scenarios). */
   /** assistant 消息：可选的名称，多 agent 场景下使用。 */
   name?: string;
 }

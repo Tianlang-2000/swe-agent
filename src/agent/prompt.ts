@@ -63,8 +63,6 @@ export function assistantTurn(text: string, toolCalls: ChatMessage['tool_calls']
 }
 
 export function toolResult(toolCallId: string, output: string, ok: boolean): ChatMessage {
-  // We surface errors in the content so the LLM sees them; the role itself
-  // is still 'tool' so the API contract is satisfied.
   // 我们把错误信息放在 content 里让 LLM 看到；role 仍然是 'tool'，
   // 这样 API 契约得以满足。
   const body = ok ? output : `[error] ${output}`;
