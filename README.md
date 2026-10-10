@@ -57,7 +57,7 @@ npm run web
 
 经典 observe → think → act 循环：
 
-1. **Plan** —— assistant 在第一轮输出 `<plan>...</plan>` 代码块，`PlanTracker` 把它存下来，每轮再塞回 system prompt
+1. **Plan** —— assistant 通过 `update_plan` 工具提交完整的结构化计划，`PlanTracker` 校验后保存，每轮再渲染回 system prompt。普通文本不会修改计划。
 2. **Act** —— assistant 调一个或多个工具，每个调用都经过 Zod 校验、派发到 handler、结果追加到 history
 3. **Observe** —— 下一轮 LLM 看到 tool 结果，决定下一步
 4. **Stop** —— assistant 不再调工具时，循环结束
@@ -158,14 +158,13 @@ sequenceDiagram
     Note over L: 进入 step 1 到 N 循环
 
     loop 每个 step 上限 MAX_STEPS
+        L->>P: renderForPrompt
         L->>C: chat system history tools
         C->>A: POST /chat/completions
         A-->>C: ChatResponse
         C-->>L: content toolCalls usage
         L->>L: totalUsage 累加
         L->>L: history push assistantTurn
-        L->>P: updateFromAssistant
-        L->>P: markStepDone
 
         alt 没有 tool_calls 结束
             L-->>U: AgentRunResult finished
@@ -173,6 +172,10 @@ sequenceDiagram
             L->>R: runAll 串行
             loop 每个 tool_call
                 R->>T: invoke name args ctx
+                opt name is update_plan
+                    T->>P: applyUpdate after validation
+                    P-->>T: detached snapshot
+                end
                 T-->>R: ToolResult
                 R-->>L: call result durationMs
             end
@@ -194,7 +197,7 @@ src/
 ├── types.ts             # ChatMessage, ToolCall, ToolDefinition, ToolResult ...
 ├── agent/
 │   ├── loop.ts          # observe→think→act 主循环
-│   ├── scheduler.ts     # PlanTracker：<plan> 解析 + 渲染
+│   ├── scheduler.ts     # PlanTracker：结构化状态校验、快照 + 渲染
 │   └── prompt.ts        # system prompt + history 工具函数
 ├── llm/
 │   ├── client.ts        # OpenAI 兼容客户端（DeepSeek + MiniMax 通用）
@@ -344,7 +347,10 @@ TS 7 Native Preview 插件的语言服务器在搞鬼，认不到 `@types/node`�
 ## 设计取舍
 
 - **循环单线程**：单轮内的 tool calls 串行执行。SWE 任务里大部分调用是 file/terminal 这种有状态变更的，并行的"提速"远不如"确定性"重要
-- **计划存在 `<plan>` 块里**：不引入额外 schema，模型可以随时重写
+- **计划通过 `update_plan` 更新**：采用 [Codex 官方工具契约](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide#update-plan)，每步包含 `step` 和 `status`（`pending` / `in_progress` / `completed`），最多一步进行中；可选 `explanation`。每次提交完整列表，`plan: []` 清空计划。无效更新返回工具错误，保留旧状态。
+- **会话独立**：`AgentLoop` 自动绑定会话内的计划工具，不修改传入的共享 registry。返回结果的 `plan` 是独立快照。状态仍保存在内存中，`completed` 是模型报告，并不等于执行验证通过。
+- **旧接口迁移**：移除 `updateFromAssistant` / `markStepDone`。直接使用 tracker 时调用 `applyUpdate({ plan: [{ step: '检查代码', status: 'in_progress' }] })`；模型通过同名工具契约更新。用 `getSnapshot()` 读取状态，无需步骤编号、稳定 ID 或增量操作，因为每次替换完整快照。
+- **本地验证**：`npm run typecheck` 和 `npm test`；测试用假 LLM，无需 API key。
 - **截断的是输出，不是进程**：跑飞的 `cat` 不会让 agent OOM，进程继续但只有前 N 个字符进 prompt
 - **Zod 是信任边界**：每个 tool call 派发前重新校验。LLM 不能注入 workdir 之外的路径，也不能跳过必填字段
 - **Provider 只是一个 env var**：`LLM_PROVIDER=...` 一切就切，SDK 和工具协议都是一样的

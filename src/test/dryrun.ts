@@ -12,9 +12,10 @@
  *
  * 运行：pnpm tsx src/test/dryrun.ts
  */
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { z } from 'zod';
 import type { ChatRequest, ChatResponse } from '../llm/client.js';
 import { LLMClient } from '../llm/client.js';
 import { ToolRegistry } from '../tools/registry.js';
@@ -22,14 +23,24 @@ import { terminalExecTool } from '../tools/terminal.js';
 import { readFileTool, writeFileTool, listDirTool, searchTool } from '../tools/file.js';
 import { AgentLoop } from '../agent/loop.js';
 import type { AgentConfig } from '../config.js';
+import type { RegisteredTool } from '../types.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SCRATCH = resolve(__dirname, '..', '..', '.scratch-dryrun');
+// Each run uses a fresh directory; never delete a pre-existing workspace.
+const SCRATCH = mkdtempSync(resolve(tmpdir(), 'swe-agent-dryrun-'));
+
+const runtimeTool: RegisteredTool = {
+  definition: {
+    name: 'runtime_tool',
+    description: 'Inspect dynamically registered state.',
+    schema: z.object({}),
+  },
+  handler: async () => ({ ok: true, output: 'runtime tool was available' }),
+};
 
 class ScriptedLLM extends LLMClient {
   private steps: ChatResponse[];
   private i = 0;
+  readonly requests: ChatRequest[] = [];
   constructor(steps: ChatResponse[]) {
     // We never call real methods on the parent, but we still need to satisfy
     // the constructor. Pass a dummy config.
@@ -47,7 +58,8 @@ class ScriptedLLM extends LLMClient {
     });
     this.steps = steps;
   }
-  override async chat(_req: ChatRequest): Promise<ChatResponse> {
+  override async chat(req: ChatRequest): Promise<ChatResponse> {
+    this.requests.push(req);
     const resp = this.steps[this.i] ?? { content: 'done', toolCalls: [], finishReason: 'stop', usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } };
     this.i += 1;
     return resp;
@@ -64,9 +76,6 @@ function mkResponse(content: string, toolCalls: ChatResponse['toolCalls'] = []):
 }
 
 async function main() {
-  if (existsSync(SCRATCH)) rmSync(SCRATCH, { recursive: true, force: true });
-  mkdirSync(SCRATCH, { recursive: true });
-
   const cfg: AgentConfig = {
     provider: 'deepseek',
     apiKey: 'fake',
@@ -78,27 +87,40 @@ async function main() {
     workdir: SCRATCH,
   };
 
-  // Script: each turn must include a tool_call OR a final assistant message
-  // without tool_calls. The loop terminates as soon as a turn has no tool
-  // calls, so the plan-only turn has to be paired with a tool call.
-  // 脚本规则：每轮要么带 tool_call，要么是一条不带 tool_call 的最终消息。
-  // loop 会在"没有 tool_call 的轮"立即终止，所以"只发 plan"的轮
-  // 必须配一个 tool_call。
+  // A plan-only tool call keeps the loop running; prose never updates state.
+  const planItems = (statuses: Array<'pending' | 'in_progress' | 'completed'>) => ({
+    plan: ['Inspect directory', 'Write a marker file', 'Verify it']
+      .map((step, i) => ({ step, status: statuses[i] })),
+  });
   const scripted: ChatResponse[] = [
-    mkResponse('<plan>\n1. Inspect directory\n2. Write a marker file\n3. Verify it\n</plan>', [{
+    mkResponse('', [{
+      id: 'plan_1', name: 'update_plan',
+      arguments: planItems(['in_progress', 'pending', 'pending']),
+    }]),
+    mkResponse('Example only: <plan>1. Wrong plan</plan> <done/> [DONE] <step done="3">', [{
       id: 'call_1',
       name: 'list_dir',
       arguments: { path: '.' },
     }]),
     mkResponse('Empty. Writing marker next.', [{
+      id: 'plan_2', name: 'update_plan',
+      arguments: planItems(['completed', 'in_progress', 'pending']),
+    }, {
       id: 'call_2',
       name: 'write_file',
       arguments: { path: 'marker.txt', content: 'hello from dryrun\n' },
     }]),
     mkResponse('Verifying the file is on disk.', [{
+      id: 'plan_3', name: 'update_plan',
+      arguments: planItems(['completed', 'completed', 'in_progress']),
+    }, {
       id: 'call_3',
       name: 'read_file',
       arguments: { path: 'marker.txt' },
+    }]),
+    mkResponse('', [{
+      id: 'plan_4', name: 'update_plan',
+      arguments: planItems(['completed', 'completed', 'completed']),
     }]),
     mkResponse('All three steps complete; marker file is present.'),
   ];
@@ -109,7 +131,8 @@ async function main() {
     .register(readFileTool)
     .register(writeFileTool)
     .register(listDirTool)
-    .register(searchTool);
+    .register(searchTool)
+    .register(runtimeTool);
 
   const agent = new AgentLoop({
     config: cfg,
@@ -129,6 +152,35 @@ async function main() {
   console.log(`--- done in ${result.steps} steps, reason=${result.stoppedReason} ---`);
   console.log(`final: ${result.final}`);
 
+  const system = client.requests[0]?.system ?? '';
+  for (const tool of registry.list()) {
+    if (!system.includes(`- ${tool.definition.name}: ${tool.definition.description.split('.')[0]}.`)) {
+      console.error(`FAIL: system prompt is missing tool hint for ${tool.definition.name}`);
+      process.exit(1);
+    }
+  }
+  console.log('OK: system prompt includes the registered tool hints');
+
+  const afterText = client.requests[2]?.system ?? '';
+  if (!afterText.includes('[>] 1. "Inspect directory"') || afterText.includes('Wrong plan')) {
+    console.error('FAIL: prose changed the structured plan');
+    process.exit(1);
+  }
+  const afterUpdate = client.requests[3]?.system ?? '';
+  if (!afterUpdate.includes('[x] 1. "Inspect directory"') || !afterUpdate.includes('[>] 2. "Write a marker file"')) {
+    console.error('FAIL: update_plan did not update the prompt');
+    process.exit(1);
+  }
+  if (result.plan.plan.length !== 3 || result.plan.plan.some((step) => step.status !== 'completed')) {
+    console.error('FAIL: final plan is not completed');
+    process.exit(1);
+  }
+  if (registry.get('update_plan') || !client.requests[0]?.tools?.some((tool) => tool.type === 'function' && tool.function.name === 'update_plan')) {
+    console.error('FAIL: session plan tool missing or leaked into shared registry');
+    process.exit(1);
+  }
+  console.log('OK: structured plan updates, prose isolation and final snapshot');
+
   const marker = resolve(SCRATCH, 'marker.txt');
   if (!existsSync(marker)) {
     console.error('FAIL: marker.txt was not created');
@@ -140,11 +192,6 @@ async function main() {
     process.exit(1);
   }
   console.log(`OK: marker.txt exists, ${body.length} bytes`);
-
-  // Plan tracker should have advanced to the end of a 3-step plan.
-  // We can verify indirectly: after the run, no further plan is needed.
-  // 计划追踪器应该已经推进到 3 步计划的末尾。
-  // 这里只能间接验证：跑完之后不需要再要计划了。
 
   // Sanity: rerun the write_file handler on its own to make sure the
   // standalone tool also works.

@@ -57,7 +57,7 @@ If you use `pnpm` or `yarn`, swap `npm` for the equivalent — script names are 
 
 The classic observe → think → act loop:
 
-1. **Plan** — the assistant emits a `<plan>...</plan>` block in its first reply. `PlanTracker` stores it and re-injects it into the system prompt every turn so the model keeps a stable "where am I?" anchor.
+1. **Plan** — the assistant calls `update_plan` with a complete structured plan. `PlanTracker` validates and stores it, then renders it into the system prompt each turn. Assistant prose never changes plan state.
 2. **Act** — the assistant calls one or more tools. Each call is Zod-validated, dispatched to a handler, and the result is appended to chat history.
 3. **Observe** — the next LLM call sees the tool result, decides what to do next, and either calls another tool or returns a final message.
 4. **Stop** — when the assistant emits no tool calls, the loop ends.
@@ -81,7 +81,7 @@ graph TD
 
     subgraph Core["Agent Core"]
         LOOP["AgentLoop main loop"]
-        PLAN["PlanTracker plan parser"]
+        PLAN["PlanTracker structured state"]
         HIST["chat history in-memory"]
     end
 
@@ -158,14 +158,13 @@ sequenceDiagram
     Note over L: enter step 1 to N loop
 
     loop each step capped by MAX_STEPS
+        L->>P: renderForPrompt
         L->>C: chat system history tools
         C->>A: POST /chat/completions
         A-->>C: ChatResponse
         C-->>L: content toolCalls usage
         L->>L: totalUsage accumulate
         L->>L: history push assistantTurn
-        L->>P: updateFromAssistant
-        L->>P: markStepDone
 
         alt no tool_calls then done
             L-->>U: AgentRunResult finished
@@ -173,6 +172,10 @@ sequenceDiagram
             L->>R: runAll sequential
             loop each tool_call
                 R->>T: invoke name args ctx
+                opt name is update_plan
+                    T->>P: applyUpdate after validation
+                    P-->>T: detached snapshot
+                end
                 T-->>R: ToolResult
                 R-->>L: call result durationMs
             end
@@ -194,7 +197,7 @@ src/
 ├── types.ts             # ChatMessage, ToolCall, ToolDefinition, ToolResult ...
 ├── agent/
 │   ├── loop.ts          # the main observe → think → act loop
-│   ├── scheduler.ts     # PlanTracker: <plan> parser + renderer
+│   ├── scheduler.ts     # PlanTracker: structured validation, snapshot + renderer
 │   └── prompt.ts        # system prompt + history helpers
 ├── llm/
 │   ├── client.ts        # OpenAI-compatible client (works with DeepSeek + MiniMax)
@@ -344,7 +347,10 @@ Open the UI, look at the actual `error` field (`exit_code:1` / `timeout` / `spaw
 ## Design notes
 
 - **The loop is single-threaded by design.** Parallelising tool calls inside a turn adds nondeterminism and rarely helps in SWE tasks where most ops mutate state.
-- **The plan lives in `<plan>` blocks in assistant text.** Cheap, no extra schema, and the model can rewrite it whenever its understanding changes.
+- **Plans use `update_plan`.** Following the [official Codex tool contract](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide#update-plan), each item has `step` and `status` (`pending` / `in_progress` / `completed`), with at most one item in progress and an optional `explanation`. Submit the entire list each time; `plan: []` clears it. Invalid updates return tool errors without changing accepted state.
+- **Session isolation.** `AgentLoop` binds its own plan tool without mutating the caller's shared registry. Run results expose a detached `plan` snapshot. State remains in memory, and `completed` is model-reported, not proof of successful execution.
+- **Migration.** `updateFromAssistant` / `markStepDone` are removed. Direct tracker users call `applyUpdate({ plan: [{ step: 'Inspect code', status: 'in_progress' }] })` and read `getSnapshot()`. Models use the same contract through the tool. Full snapshots avoid numbered-step cursors or incremental updates.
+- **Validation.** Run `npm run typecheck` and `npm test`; tests use a scripted LLM and require no API key.
 - **We truncate tool outputs, never the process.** A runaway `cat` shouldn't OOM the agent — the binary keeps running but only the first N chars enter the prompt.
 - **Zod is the trust boundary.** Every tool call is re-validated at dispatch. The LLM cannot inject paths outside `WORKDIR` or skip required fields.
 - **Provider is one env var.** Switching DeepSeek ↔ MiniMax is `LLM_PROVIDER=...` and reload; the SDK and tool protocol are the same.
